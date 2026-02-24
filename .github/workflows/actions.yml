@@ -1,0 +1,97 @@
+name: Build & Deploy (Frontend/Backend)
+
+on:
+  push:
+    branches: ["main"]
+    paths:
+      - "frontend/**"
+      - "backend/**"
+      - ".github/workflows/**"
+  workflow_dispatch:
+
+env:
+  COMPOSE_FILE: /home/ubuntu/app/docker-compose.yml
+  FRONTEND_IMAGE: umamakausar/discover-dollar-assignment:frontend-latest
+  BACKEND_IMAGE: umamakausar/discover-dollar-assignment:backend-latest
+
+jobs:
+  detect_changes:
+    name: Detect changes
+    runs-on: ubuntu-latest
+    outputs:
+      frontend: ${{ steps.filter.outputs.frontend }}
+      backend: ${{ steps.filter.outputs.backend }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Filter paths
+        id: filter
+        uses: dorny/paths-filter@v3
+        with:
+          filters: |
+            frontend:
+              - 'frontend/**'
+            backend:
+              - 'backend/**'
+
+  frontend:
+    name: Frontend - Build, Push & Deploy
+    needs: detect_changes
+    if: ${{ needs.detect_changes.outputs.frontend == 'true' || github.event_name == 'workflow_dispatch' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Login to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Build & Push Frontend image
+        run: |
+          docker build -t "$FRONTEND_IMAGE" ./frontend
+          docker push "$FRONTEND_IMAGE"
+
+      - name: Deploy frontend on VM
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ${{ secrets.EC2_USER }}
+          key: ${{ secrets.EC2_SSH_KEY }}
+          script: |
+            set -e
+            echo "${{ secrets.DOCKERHUB_TOKEN }}" | docker login -u "${{ secrets.DOCKERHUB_USERNAME }}" --password-stdin
+            docker compose -f "${{ env.COMPOSE_FILE }}" pull frontend
+            docker compose -f "${{ env.COMPOSE_FILE }}" up -d --no-deps --force-recreate frontend
+
+  backend:
+    name: Backend - Build, Push & Deploy
+    needs: detect_changes
+    if: ${{ needs.detect_changes.outputs.backend == 'true' || github.event_name == 'workflow_dispatch' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Login to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Build & Push Backend image
+        run: |
+          docker build -t "$BACKEND_IMAGE" ./backend
+          docker push "$BACKEND_IMAGE"
+
+      - name: Deploy backend on VM
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ${{ secrets.EC2_USER }}
+          key: ${{ secrets.EC2_SSH_KEY }}
+          script: |
+            set -e
+            echo "${{ secrets.DOCKERHUB_TOKEN }}" | docker login -u "${{ secrets.DOCKERHUB_USERNAME }}" --password-stdin
+            docker compose -f "${{ env.COMPOSE_FILE }}" pull backend
+            docker compose -f "${{ env.COMPOSE_FILE }}" up -d --no-deps --force-recreate backend

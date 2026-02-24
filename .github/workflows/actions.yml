@@ -10,7 +10,7 @@ on:
   workflow_dispatch:
 
 env:
-  COMPOSE_FILE: /home/ubuntu/app/docker-compose.yml
+  COMPOSE_FILE: /home/ubuntu/application/docker-compose.yml
   FRONTEND_IMAGE: umamakausar/discover-dollar-assignment:frontend-latest
   BACKEND_IMAGE: umamakausar/discover-dollar-assignment:backend-latest
 
